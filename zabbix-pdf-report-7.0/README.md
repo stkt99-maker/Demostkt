@@ -19,6 +19,8 @@
 
 Created by **Axel Del Canto** WITH IA.
 
+> 📖 **คู่มือติดตั้งภาษาไทย:** [INSTALL.md](INSTALL.md) — รองรับ Zabbix 6.4–7.4+ (ทดสอบแล้วบน 7.4.15)
+
 A simple and powerful web tool to select Zabbix items and export their historical graphs into a PDF report.
 
 ---
