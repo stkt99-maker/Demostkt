@@ -1,0 +1,20 @@
+# ===== การตั้งค่าจริง / ข้อมูลละเอียดอ่อน — ห้ามอัปขึ้น repo =====
+# Local configuration (contains credentials)
+zabbix-pdf-report-7.0/config.php
+
+# Session cookies / cookie jars (test leftovers)
+zabbix-pdf-report-7.0/cookies.txt
+zabbix-pdf-report-7.0/cj
+
+# ===== Runtime artifacts =====
+tmp/
+logs/
+*.log
+zabbix-pdf-report-7.0/report_test.pdf
+
+# ===== Archives kept locally only =====
+*.tar.gz
+
+# ===== OS / editor junk =====
+.DS_Store
+Thumbs.db
