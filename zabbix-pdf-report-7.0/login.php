@@ -181,14 +181,15 @@ body.dark-theme .custom-logo {
 </head>
 <body class="light-theme">
 <div style="position: absolute; top: 20px; left: 20px; z-index: 10;">
-    <a href="?lang=es" style="text-decoration: none; color: inherit;">ES</a> | 
-    <a href="?lang=en" style="text-decoration: none; color: inherit;">EN</a>
+    <a href="?lang=th" style="text-decoration: none; color: inherit;">TH</a> |
+    <a href="?lang=en" style="text-decoration: none; color: inherit;">EN</a> |
+    <a href="?lang=es" style="text-decoration: none; color: inherit;">ES</a>
 </div>
 <button id="theme-toggle" class="theme-switcher"><?= t('theme_dark') ?></button>
 <div class="wrap">
   <form class="card" method="post" action="login.php" autocomplete="off">
     <div class="logo-container">
-      <img src="<?= htmlspecialchars(defined('CUSTOM_LOGO_PATH') ? CUSTOM_LOGO_PATH : 'assets/sonda.png', ENT_QUOTES, 'UTF-8') ?>" alt="Logo" class="custom-logo" />
+      <img src="<?= htmlspecialchars(Settings::logoPath() !== '' ? Settings::logoPath() : (defined('CUSTOM_LOGO_PATH') ? CUSTOM_LOGO_PATH : 'assets/sonda.png'), ENT_QUOTES, 'UTF-8') ?>" alt="Logo" class="custom-logo" />
       <span class="zabbix-logo">Zabbix</span>
     </div>
     <h1><?= t('login_heading') ?></h1>

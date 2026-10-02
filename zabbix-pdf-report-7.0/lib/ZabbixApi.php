@@ -129,15 +129,18 @@ class ZabbixApi {
     /** Devuelve mapa nombre->hostid para nombres dados. */
     public function hostMapByNames(array $names): array {
         if (empty($names)) return [];
-        $res = $this->call('host.get', [
-            'output' => ['hostid', 'host', 'name'],
-            'filter' => ['host' => $names],
-        ]);
         $map = [];
-        foreach ((array)$res as $h) {
-            if (!empty($h['hostid'])) {
-                $key = !empty($h['host']) ? $h['host'] : (!empty($h['name']) ? $h['name'] : null);
-                if ($key) $map[$key] = (string)$h['hostid'];
+        // Coincidencia exacta por nombre técnico ('host') Y por nombre visible
+        // ('name'): en 7.4 filter con ambas claves es AND, así que son 2 consultas.
+        // (Un host puede tener el nombre técnico en IP y el visible en texto.)
+        foreach ([['host' => $names], ['name' => $names]] as $filter) {
+            $res = $this->call('host.get', ['output' => ['hostid', 'host', 'name'], 'filter' => $filter]);
+            foreach ((array)$res as $h) {
+                if (!empty($h['hostid'])) {
+                    $id = (string)$h['hostid'];
+                    if (!empty($h['host'])) $map[$h['host']] = $id;
+                    if (!empty($h['name'])) $map[$h['name']] = $id;
+                }
             }
         }
         return $map;
@@ -155,6 +158,20 @@ class ZabbixApi {
             if (!empty($h['hostid'])) $ids[] = (string)$h['hostid'];
         }
         return array_values(array_unique($ids));
+    }
+
+    /** Devuelve hostids de los hosts que pertenecen a grupos dados por NOMBRE. */
+    public function hostIdsByGroupNames(array $names): array {
+        if (empty($names)) return [];
+        $res = $this->call('hostgroup.get', [
+            'output' => ['groupid'],
+            'filter' => ['name' => $names],
+        ]);
+        $groupids = [];
+        foreach ((array)$res as $g) {
+            if (!empty($g['groupid'])) $groupids[] = (string)$g['groupid'];
+        }
+        return $this->hostIdsByGroupIds($groupids);
     }
 
     /** Info básica de hosts por IDs. */

@@ -49,6 +49,30 @@ function array_flat($v) {
     return $out;
 }
 
+// Divide una lista de claves por comas solo a nivel superior: ignora las
+// comas dentro de [ ] ( ) y dentro de comillas, p.ej. wmi.getall["a,b"].
+function split_keys_respecting_brackets(string $s): array {
+    $out = []; $cur = ''; $depth = 0; $inQuote = false; $escaped = false;
+    $len = strlen($s);
+    for ($i = 0; $i < $len; $i++) {
+        $ch = $s[$i];
+        if ($escaped) { $cur .= $ch; $escaped = false; continue; }
+        if ($ch === '\\') { $cur .= $ch; $escaped = true; continue; }
+        if ($inQuote) { $cur .= $ch; if ($ch === '"') $inQuote = false; continue; }
+        if ($ch === '"') { $inQuote = true; $cur .= $ch; continue; }
+        if ($ch === '[' || $ch === '(') { $depth++; $cur .= $ch; continue; }
+        if ($ch === ']' || $ch === ')') { if ($depth > 0) $depth--; $cur .= $ch; continue; }
+        if ($ch === ',' && $depth === 0) {
+            if (trim($cur) !== '') $out[] = trim($cur);
+            $cur = '';
+            continue;
+        }
+        $cur .= $ch;
+    }
+    if (trim($cur) !== '') $out[] = trim($cur);
+    return $out;
+}
+
 function collect_values(array $names) {
     $vals = [];
     foreach ($names as $k) {
@@ -208,8 +232,19 @@ $input_host_names = collect_values(['hosts', 'host_names', 'hostnames', 'hosts_n
 $input_hg_ids = collect_values(['hostgroupids', 'groupids', 'hostgroups', 'host_groups', 'hostgroups_ids', 'groupids[]']);
 
 // ==================== INICIO DE LA CORRECCI�N DE B�SQUEDA ====================
-// Usamos 'item_keys' que viene del input oculto, que contiene las claves �nicas y exactas.
-$input_item_keys = collect_values(['item_keys']);
+// item_keys llega como JSON (el modal lo arma con JSON.stringify) para permitir
+// claves que contienen comas, p.ej. perf_counter_en["\PhysicalDisk(...)",60].
+// Fallback: cadena separada por comas (formato antiguo).
+$rawItemKeys = isset($_POST['item_keys']) ? (string)$_POST['item_keys'] : '';
+$input_item_keys = [];
+if ($rawItemKeys !== '') {
+    $tmp = json_decode($rawItemKeys, true);
+    if (is_array($tmp)) {
+        foreach ($tmp as $x) { if (is_string($x) && trim($x) !== '') $input_item_keys[] = trim($x); }
+    } else {
+        $input_item_keys = split_keys_respecting_brackets($rawItemKeys);
+    }
+}
 // ===================== FIN DE LA CORRECCI�N DE B�SQUEDA ======================
 
 $input_item_ids = collect_values(['itemids', 'items_id', 'item_ids', 'itemids[]']);
@@ -282,8 +317,12 @@ if (!empty($input_host_names)) {
 }
 if (!empty($input_hg_ids)) {
     try {
-        $idsFromGroups = $api->hostIdsByGroupIds($input_hg_ids);
-        foreach ($idsFromGroups as $id) $hostids[] = (string)$id;
+        // El campo oculto trae IDs y el textarea puede traer NOMBRES de grupo;
+        // mezclar ambos en groupids provoca un error de SQL en Zabbix 7.4.
+        $groupIds = []; $groupNames = [];
+        foreach ($input_hg_ids as $v) { if (ctype_digit($v)) $groupIds[] = $v; else $groupNames[] = $v; }
+        if (!empty($groupIds))   foreach ($api->hostIdsByGroupIds($groupIds) as $id) $hostids[] = (string)$id;
+        if (!empty($groupNames)) foreach ($api->hostIdsByGroupNames($groupNames) as $id) $hostids[] = (string)$id;
     } catch (Throwable $e) {
         $apiErrors[] = 'host.get (por grupo): ' . $e->getMessage();
     }
