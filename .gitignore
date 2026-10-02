@@ -18,3 +18,11 @@ zabbix-pdf-report-7.0/report_test.pdf
 # ===== OS / editor junk =====
 .DS_Store
 Thumbs.db
+
+# ===== การตั้งค่าผ่านหน้า settings.php (runtime, ไม่ควรขึ้น repo) =====
+zabbix-pdf-report-7.0/data/
+zabbix-pdf-report-7.0/assets/custom_logo.png
+
+# ===== ของที่ไม่เอาขึ้น repo =====
+zabbix-7.4.15/
+zabbix-pdf-report-7.0/assets/nti_logo.png

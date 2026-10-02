@@ -3,8 +3,8 @@
 declare(strict_types=1);
 
 // --- Configuración ---
-const DEFAULT_LANG = 'es';
-const SUPPORTED_LANGS = ['es', 'en'];
+const DEFAULT_LANG = 'th';
+const SUPPORTED_LANGS = ['th', 'en', 'es'];
 // ---------------------
 
 // Variable global para almacenar las traducciones
@@ -54,3 +54,8 @@ if (file_exists($lang_file)) {
         $translations = require $fallback_file;
     }
 }
+
+// ค่าที่ผู้ใช้แก้ผ่านหน้าตั้งค่า (settings.php) มาทับข้อความจากไฟล์ภาษา
+// (override มีผลกับทุกภาษา เพราะถือเป็นข้อความขององค์กร)
+require_once __DIR__ . '/Settings.php';
+$translations = array_merge($translations, Settings::textOverrides());

@@ -34,6 +34,11 @@ function getZabbixTemplates() {
 }
 
 $zabbixTemplates = getZabbixTemplates();
+
+// โลโก้ของหน้า: รูปที่อัปโหลดผ่านหน้าตั้งค่ามาก่อน แล้วค่อยใช้ค่าจาก config.php
+$pageLogo = Settings::logoPath() !== ''
+    ? Settings::logoPath()
+    : (defined('CUSTOM_LOGO_PATH') ? CUSTOM_LOGO_PATH : 'assets/sonda.png');
 ?>
 <!doctype html>
 <html lang="<?= htmlspecialchars($current_lang, ENT_QUOTES, 'UTF-8') ?>">
@@ -256,12 +261,16 @@ body.dark-theme .pagination-controls button:hover {
   <div class="card">
     <div class="header-container">
       <div class="logo-container">
-        <img src="<?= htmlspecialchars(defined('CUSTOM_LOGO_PATH') ? CUSTOM_LOGO_PATH : 'assets/sonda.png', ENT_QUOTES, 'UTF-8') ?>" alt="Logo" class="custom-logo" />
+        <img src="<?= htmlspecialchars($pageLogo, ENT_QUOTES, 'UTF-8') ?>" alt="Logo" class="custom-logo" />
         <span class="zabbix-logo">Zabbix</span>
       </div>
       <div>
         <h1><?= t('export_title') ?></h1>
         <div class="muted"><?= t('export_logged_in_as') ?> <b><?=htmlspecialchars($_SESSION['zbx_user'],ENT_QUOTES,'UTF-8')?></b> Front: <?=htmlspecialchars(ZABBIX_URL,ENT_QUOTES,'UTF-8')?></div>
+        <div style="margin-top:8px;display:flex;gap:8px;">
+          <a class="btn" href="settings.php" style="margin-top:0;padding:.4rem .8rem;font-size:13px;">⚙ ตั้งค่า</a>
+          <a class="btn" href="logout.php" style="margin-top:0;padding:.4rem .8rem;font-size:13px;background-color:#6c757d;">⎋ <?= t('export_logout') ?></a>
+        </div>
       </div>
     </div>
 
@@ -280,10 +289,21 @@ body.dark-theme .pagination-controls button:hover {
         <button type="button" class="btn" id="open-hostgroup-modal"><?= t('modal_select_button') ?></button>
       </div>
       
-      <label><?= t('export_templates_items_label') ?></label>
+      <label><?= t('export_templates_only_label') ?></label>
       <div class="templates-container">
-        <textarea name="template_and_items_txt" id="templates-and-items-textarea" rows="4" placeholder="<?= t('export_templates_items_placeholder') ?>"></textarea>
+        <textarea name="template_txt" id="templates-textarea" rows="2" readonly placeholder="<?= t('export_templates_items_placeholder') ?>"></textarea>
         <button type="button" class="btn" id="open-template-item-modal"><?= t('modal_select_button') ?></button>
+      </div>
+
+      <label><?= t('export_items_label') ?></label>
+      <div style="display:block;">
+        <input type="text" id="page-item-filter" class="modal-filter" placeholder="<?= t('items_search_placeholder') ?>" style="max-width:420px;margin-bottom:8px;" />
+        <div class="bulk-ops-controls" style="margin-bottom:8px;">
+          <button type="button" class="btn" id="page-item-select-all" style="background-color:#3498db;"><?= t('items_select_all') ?></button>
+          <button type="button" class="btn" id="page-item-deselect-all" style="background-color:#95a5a6;"><?= t('items_clear_all') ?></button>
+          <span id="page-item-count" class="muted" style="margin-left:8px;"></span>
+        </div>
+        <div id="page-item-list" style="max-height:260px;overflow-y:auto;border:1px solid #ddd;padding:5px;border-radius:10px;"></div>
       </div>
 
       <input type="hidden" name="item_keys" id="itemkeys-hidden-input" />
@@ -302,7 +322,10 @@ body.dark-theme .pagination-controls button:hover {
         </div>
       </div>
       <div style="text-align: right;">
-        <button type="button" class="btn" id="24h-btn" style="background-color: #6c757d;"><?= t('export_last_24h') ?></button>
+        <button type="button" class="btn btn-range" data-range="day" style="background-color: #6c757d;"><?= t('export_last_1d') ?></button>
+        <button type="button" class="btn btn-range" data-range="week" style="background-color: #6c757d;"><?= t('export_last_1w') ?></button>
+        <button type="button" class="btn btn-range" data-range="month" style="background-color: #6c757d;"><?= t('export_last_1m') ?></button>
+        <button type="button" class="btn btn-range" data-range="year" style="background-color: #6c757d;"><?= t('export_last_1y') ?></button>
       </div>
       <small><?= t('export_time_range_note') ?></small>
 
@@ -379,6 +402,10 @@ body.dark-theme .pagination-controls button:hover {
     </div>
     <div id="modal-step-2" style="display:none;">
       <input type="text" id="item-filter" class="modal-filter" placeholder="<?= t('modal_filter_items_placeholder') ?>" />
+      <div class="bulk-ops-controls" style="margin-bottom: 10px;">
+        <button type="button" class="btn" id="item-select-all" style="background-color: #3498db;"><?= t('modal_select_page_button') ?></button>
+        <button type="button" class="btn" id="item-deselect-all" style="background-color: #95a5a6;"><?= t('modal_deselect_page_button') ?></button>
+      </div>
       <div id="item-list" style="max-height: 300px; overflow-y: auto; border: 1px solid #ddd; padding: 5px; border-radius: 10px;"></div>
       <div class="modal-footer">
         <button type="button" class="btn" id="select-items"><?= t('modal_add_items_button') ?></button>
@@ -391,6 +418,67 @@ body.dark-theme .pagination-controls button:hover {
 <script>
   const T = <?= json_encode($translations) ?>;
   const itemsPerPage = 10;
+
+  // แคตตาล็อก key_ -> ชื่อ item ใช้ร่วมกันระหว่าง auto-fill (host modal) กับ
+  // modal เลือก items และรายการ checkbox บนหน้าฟอร์ม
+  const itemCatalog = new Map();
+
+  function getCurrentItemKeys() {
+    try { const j = JSON.parse(document.getElementById('itemkeys-hidden-input').value || '[]'); return Array.isArray(j) ? j : []; } catch (e) { return []; }
+  }
+  function setCurrentItemKeys(keys) {
+    document.getElementById('itemkeys-hidden-input').value = JSON.stringify(keys);
+  }
+
+  // รายการ Items บนหน้าฟอร์ม: ติ๊กเลือก/ถอดออกได้ตรงๆ ว่า item ไหนจะอยู่ในรายงาน
+  // (hidden item_keys คือข้อมูลจริงที่ส่งให้ generate.php)
+  function renderItemPanel() {
+    const list = document.getElementById('page-item-list');
+    const filter = (document.getElementById('page-item-filter').value || '').toLowerCase();
+    const keySet = new Set(getCurrentItemKeys());
+    const entries = Array.from(itemCatalog.entries())
+      .filter(([k, n]) => !filter || k.toLowerCase().includes(filter) || String(n).toLowerCase().includes(filter));
+    entries.sort((a, b) => String(a[1]).localeCompare(String(b[1])));
+    const esc = s => String(s).replace(/&/g, '&amp;').replace(/"/g, '&quot;').replace(/</g, '&lt;');
+    if (entries.length === 0) {
+      list.innerHTML = '<p class="muted">' + esc(T.items_panel_empty || '') + '</p>';
+    } else {
+      list.innerHTML = entries.map(([k, n]) =>
+        `<label class="chk"><input type="checkbox" data-key="${esc(k)}" ${keySet.has(k) ? 'checked' : ''}> ${esc(n)} <small>${esc(k)}</small></label>`).join('');
+    }
+    updateItemCount();
+  }
+
+  function updateItemCount() {
+    document.getElementById('page-item-count').textContent = getCurrentItemKeys().length + ' / ' + itemCatalog.size;
+  }
+
+  // เปลี่ยนแปลง checkbox บนหน้าฟอร์ม (event delegation ทนต่อการ re-render)
+  document.getElementById('page-item-list').addEventListener('change', e => {
+    if (!e.target || !e.target.matches('input[type="checkbox"]')) return;
+    const key = e.target.dataset.key;
+    let keys = getCurrentItemKeys();
+    if (e.target.checked) {
+      if (!keys.includes(key)) keys.push(key);
+    } else {
+      keys = keys.filter(k => k !== key);
+    }
+    setCurrentItemKeys(keys);
+    updateItemCount();
+  });
+  document.getElementById('page-item-filter').addEventListener('input', () => renderItemPanel());
+  document.getElementById('page-item-select-all').onclick = () => {
+    // เลือกทั้งหมด = ทุกคีย์ที่แสดงอยู่ (คงคีย์ที่ไม่แสดงเดิมไว้)
+    const rendered = Array.from(document.getElementById('page-item-list').querySelectorAll('input[type="checkbox"]')).map(cb => cb.dataset.key);
+    setCurrentItemKeys(Array.from(new Set([...getCurrentItemKeys(), ...rendered])));
+    renderItemPanel();
+  };
+  document.getElementById('page-item-deselect-all').onclick = () => {
+    // ล้าง = ถอดเฉพาะคีย์ที่แสดงอยู่ (คีย์ที่ไม่แสดงยังอยู่ครบ)
+    const rendered = new Set(Array.from(document.getElementById('page-item-list').querySelectorAll('input[type="checkbox"]')).map(cb => cb.dataset.key));
+    setCurrentItemKeys(getCurrentItemKeys().filter(k => !rendered.has(k)));
+    renderItemPanel();
+  };
 
   function renderPagination(container, currentPage, totalItems, onPageClick) {
     container.innerHTML = '';
@@ -484,7 +572,35 @@ body.dark-theme .pagination-controls button:hover {
         textarea.value = Array.from(new Set([...currentNames, ...selectedNames])).join(', ');
         hiddenInput.value = Array.from(new Set([...currentIds, ...selectedIds])).join(',');
         modal.style.display = 'none';
+        autoFillFromHosts(hiddenInput.value);
     };
+
+    // เมื่อเลือก hosts แล้ว ดึงกลุ่ม + เทมเพลต + items ของ hosts เหล่านั้น
+    // มาเติมช่อง Host Groups และ Templates and Items อัตโนมัติ
+    function autoFillFromHosts(hostIdsCsv) {
+        const ids = hostIdsCsv.split(',').map(s => s.trim()).filter(Boolean);
+        if (ids.length === 0) return;
+        const groupsTextarea = document.getElementById('hostgroups-textarea');
+        const groupsHidden = document.getElementById('hostgroupids-hidden-input');
+        const keysHidden = document.getElementById('itemkeys-hidden-input');
+        const csrf = document.querySelector('#form-export input[name="csrf_token"]');
+        const fd = new FormData();
+        fd.append('csrf_token', csrf ? csrf.value : '');
+        fd.append('hostids', JSON.stringify(ids));
+        fetch('ajax_host_details.php', { method: 'POST', body: fd, credentials: 'same-origin' })
+            .then(res => res.json())
+            .then(j => {
+                if (!j || !j.ok) { console.error('autoFill failed', j && j.error); return; }
+                groupsTextarea.value = j.groups.map(g => g.name).join(', ');
+                // CSV ให้ตรงกับรูปแบบที่ group modal เขียน (merge ด้วย split(',') ได้)
+                groupsHidden.value = j.groups.map(g => g.id).join(',');
+                j.items.forEach(i => itemCatalog.set(i.key, i.name));
+                keysHidden.value = JSON.stringify(j.items.map(i => i.key));
+                document.getElementById('templates-textarea').value = j.templates.map(tp => tp.name).join(', ');
+                renderItemPanel();
+            })
+            .catch(() => {});
+    }
   })();
 
   // 2. MODAL DE GRUPOS DE HOSTS
@@ -568,8 +684,17 @@ body.dark-theme .pagination-controls button:hover {
         const filtered = allItems.filter(item => item.name.toLowerCase().includes(filterText) || item.key_.toLowerCase().includes(filterText));
         itemList.innerHTML = '';
         if (filtered.length === 0) { itemList.innerHTML = `<p>${T.modal_no_results}</p>`; return; }
-        filtered.forEach(item => { const label = document.createElement('label'); label.className = 'chk'; label.innerHTML = `<input type="checkbox" name="item[]" value="${item.itemid}" data-name="${item.name}" data-key="${item.key_}"> ${item.name} <small>${item.key_}</small>`; itemList.appendChild(label); });
+        // Pre-check รายการที่เลือกอยู่แล้ว (จาก auto-fill หรือการเลือกครั้งก่อน)
+        const currentKeys = new Set(getCurrentItemKeys());
+        const esc = s => String(s).replace(/&/g, '&amp;').replace(/"/g, '&quot;').replace(/</g, '&lt;');
+        filtered.forEach(item => {
+            itemCatalog.set(item.key_, item.name);
+            const pre = currentKeys.has(item.key_) ? 'checked' : '';
+            const label = document.createElement('label'); label.className = 'chk'; label.innerHTML = `<input type="checkbox" name="item[]" value="${item.itemid}" data-name="${esc(item.name)}" data-key="${esc(item.key_)}" ${pre}> ${esc(item.name)} <small>${esc(item.key_)}</small>`; itemList.appendChild(label);
+        });
     };
+    document.getElementById('item-select-all').onclick = () => itemList.querySelectorAll('input[type="checkbox"]').forEach(cb => cb.checked = true);
+    document.getElementById('item-deselect-all').onclick = () => itemList.querySelectorAll('input[type="checkbox"]').forEach(cb => cb.checked = false);
     const fetchItemsOnce = () => {
         itemList.innerHTML = `<p>${T.modal_loading}</p>`;
         const params = new URLSearchParams();
@@ -588,16 +713,20 @@ body.dark-theme .pagination-controls button:hover {
     cancelBtn.onclick = () => modal.style.display = 'none';
     backBtn.onclick = () => { step1.style.display = 'block'; step2.style.display = 'none'; modalTitle.textContent = T.modal_select_templates_title; };
     selectItemsBtn.onclick = () => {
-        const itemCheckboxes = itemList.querySelectorAll('input[type="checkbox"]:checked');
-        if (itemCheckboxes.length === 0) { alert(T.alert_select_item); return; }
-        const templatesAndItemsTextarea = document.getElementById('templates-and-items-textarea'), itemkeysHiddenInput = document.getElementById('itemkeys-hidden-input');
-        const newSelectedItemNames = Array.from(itemCheckboxes).map(cb => cb.dataset.name), newSelectedItemKeys = Array.from(itemCheckboxes).map(cb => cb.dataset.key);
-        let currentItemKeys = itemkeysHiddenInput.value.split(',').filter(Boolean);
+        const allRendered = Array.from(itemList.querySelectorAll('input[type="checkbox"]'));
+        const checked = allRendered.filter(cb => cb.checked);
+        // คีย์ที่ไม่ได้แสดงในรอบนี้ (จาก template อื่นหรือ auto-fill) ถูกเก็บไว้ครบ;
+        // รายการที่แสดงอยู่ใช้สถานะ checkbox ล้วนๆ — uncheck = ถอดออกจากรายงาน
+        const renderedKeys = new Set(allRendered.map(cb => cb.dataset.key));
+        const kept = getCurrentItemKeys().filter(k => !renderedKeys.has(k));
+        const finalKeys = Array.from(new Set([...kept, ...checked.map(cb => cb.dataset.key)]));
+        if (finalKeys.length === 0) { alert(T.alert_select_item); return; }
+        checked.forEach(cb => itemCatalog.set(cb.dataset.key, cb.dataset.name));
+        const itemkeysHiddenInput = document.getElementById('itemkeys-hidden-input');
+        itemkeysHiddenInput.value = JSON.stringify(finalKeys);
         const selectedTemplateNames = Array.from(listContainer1.querySelectorAll('input[type="checkbox"]:checked')).map(cb => cb.dataset.name);
-        const combinedItemKeys = Array.from(new Set([...currentItemKeys, ...newSelectedItemKeys]));
-        let displayText = `Plantillas: ${selectedTemplateNames.join(', ')} | Items: ${newSelectedItemNames.join(', ')}`;
-        itemkeysHiddenInput.value = combinedItemKeys.join(',');
-        templatesAndItemsTextarea.value = displayText;
+        document.getElementById('templates-textarea').value = selectedTemplateNames.join(', ');
+        renderItemPanel();
         modal.style.display = 'none';
     };
   })();
@@ -620,11 +749,18 @@ body.dark-theme .pagination-controls button:hover {
     
     window.onclick = (event) => { if (event.target.matches('.modal')) event.target.style.display = 'none'; };
     
-    document.getElementById('24h-btn').addEventListener('click', () => {
-        const now = new Date(), from = new Date(now.getTime() - 24 * 60 * 60 * 1000);
-        const formatDate = d => d.getFullYear() + '-' + (d.getMonth()+1).toString().padStart(2,'0') + '-' + d.getDate().toString().padStart(2,'0') + 'T' + d.getHours().toString().padStart(2,'0') + ':' + d.getMinutes().toString().padStart(2,'0');
-        document.getElementById('from_dt').value = formatDate(from);
-        document.getElementById('to_dt').value = formatDate(now);
+    // ปุ่มช่วงเวลาด่วน: 1 วัน / 1 สัปดาห์ / 1 เดือน / 1 ปี
+    const fmtDT = d => d.getFullYear() + '-' + (d.getMonth()+1).toString().padStart(2,'0') + '-' + d.getDate().toString().padStart(2,'0') + 'T' + d.getHours().toString().padStart(2,'0') + ':' + d.getMinutes().toString().padStart(2,'0');
+    document.querySelectorAll('.btn-range').forEach(btn => {
+        btn.addEventListener('click', () => {
+            const now = new Date(), from = new Date(now);
+            if (btn.dataset.range === 'day')        from.setDate(from.getDate() - 1);
+            else if (btn.dataset.range === 'week')  from.setDate(from.getDate() - 7);
+            else if (btn.dataset.range === 'month') from.setMonth(from.getMonth() - 1);
+            else if (btn.dataset.range === 'year')  from.setFullYear(from.getFullYear() - 1);
+            document.getElementById('from_dt').value = fmtDT(from);
+            document.getElementById('to_dt').value = fmtDT(now);
+        });
     });
 
     // NOTE: no auto-reload on submit. The CSRF token now lasts the whole session,

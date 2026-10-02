@@ -30,8 +30,19 @@ return [
     'export_from_label' => 'Desde:',
     'export_to_label' => 'Hasta:',
     'export_last_24h' => 'Últimas 24 horas',
+    'export_last_1d' => 'Último 1 día',
+    'export_last_1w' => 'Última 1 semana',
+    'export_last_1m' => 'Último 1 mes',
+    'export_last_1y' => 'Último 1 año',
     'export_time_range_note' => 'Si completas Desde/Hasta, se usará rango absoluto. Si no, se usa el relativo.',
     'export_generate_pdf_button' => 'Generar PDF',
+    'export_logout' => 'Cerrar sesión',
+    'export_templates_only_label' => 'Plantillas',
+    'export_items_label' => 'Items a incluir en el informe (marque/desmarque para elegir)',
+    'items_search_placeholder' => 'Buscar items...',
+    'items_select_all' => 'Seleccionar todo',
+    'items_clear_all' => 'Quitar todo',
+    'items_panel_empty' => 'Aún no hay items — seleccione Hosts primero o elija desde plantillas',
 
     // Modals (JavaScript)
     'modal_select_button' => 'Seleccionar',
@@ -69,7 +80,7 @@ return [
     // ... (traducciones existentes)
 
     // PdfBuilder.php
-    'pdf_main_title' => 'Reporte de Gráficos de Zabbix',
+    'pdf_main_title' => 'บริษัท นิวเทคโนโลยี่อินฟอร์เมชั่น จำกัด',
     'pdf_toc_title' => 'Índice',
     'pdf_generated_on' => 'Generado el',
     'pdf_page_x_of_y' => 'Página {PAGE_NUM} de {PAGE_COUNT}',

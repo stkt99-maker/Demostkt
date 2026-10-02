@@ -19,8 +19,14 @@ define('ZABBIX_API_URL', rtrim(ZABBIX_URL, '/').'/api_jsonrpc.php');
 define('ZABBIX_API_USER', 'Admin');       // Nombre de usuario de la API
 define('ZABBIX_API_PASS', 'contraseña');  // Contraseña del usuario de la API
 
-// (Opcional) Ruta al logo personalizado, relativa a la raíz del proyecto
-define('CUSTOM_LOGO_PATH', 'assets/Zabbix_logo.png');
+// (Opcional) Ruta al logo personalizado, relativa a la raíz del proyecto.
+// Aparece en el encabezado del PDF y en las páginas login/export.
+// Formatos: PNG o JPG. Deja '' para no mostrar logo propio.
+define('CUSTOM_LOGO_PATH', 'assets/mi_logo.png');
+
+// (Opcional) Logo del pie de página en el PDF.
+// '' = logo de Zabbix por defecto (assets/Zabbix_logo.png); 'assets/x.png' = otro; 'none' = ocultarlo.
+define('FOOTER_LOGO_PATH', '');
 define('APPLY_LOGO_BLEND_MODE', true);
 
 // ===== CONFIGURACIÓN AVANZADA =====

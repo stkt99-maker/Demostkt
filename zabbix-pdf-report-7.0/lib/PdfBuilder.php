@@ -2,6 +2,7 @@
 // lib/PdfBuilder.php — Versión robusta con logos opcionales.
 
 require_once __DIR__ . '/../config.php';
+require_once __DIR__ . '/Settings.php';
 
 class PdfBuilder
 {
@@ -37,19 +38,20 @@ class PdfBuilder
 
         // ==================== INICIO DE LA CORRECCIÓN DE LOGOS ====================
 
-        // 2. Prepara el logo personalizado (opcional)
-        $custom_logo_b64 = ''; // Por defecto, vacío
-        $logo_path_relative = defined('CUSTOM_LOGO_PATH') ? CUSTOM_LOGO_PATH : 'assets/sonda.png';
-        $logo_path_absolute = __DIR__ . '/../' . $logo_path_relative;
-        if (is_file($logo_path_absolute)) {
-            $custom_logo_b64 = 'data:image/png;base64,' . base64_encode(file_get_contents($logo_path_absolute));
-        }
+        // 2. Logo personalizado (opcional) — รูปจากหน้าตั้งค่า (settings.php) มาก่อน,
+        //    ถ้าไม่ได้ตั้งใช้ CUSTOM_LOGO_PATH จาก config.php
+        $custom_logo_b64 = self::logoDataUri(
+            Settings::logoPath() !== '' ? Settings::logoPath() : (defined('CUSTOM_LOGO_PATH') ? CUSTOM_LOGO_PATH : '')
+        );
 
-        // 3. Prepara el logo de Zabbix (opcional)
-        $zabbix_logo_b64 = ''; // Por defecto, vacío
-        $zabbix_logo_path = __DIR__ . '/../assets/Zabbix_logo.png';
-        if (is_file($zabbix_logo_path)) {
-            $zabbix_logo_b64 = 'data:image/png;base64,' . base64_encode(file_get_contents($zabbix_logo_path));
+        // 3. Logo del pie de página — FOOTER_LOGO_PATH en config.php.
+        //    '' o sin definir = logo de Zabbix por defecto; 'none' = ocultar; otra ruta = ese archivo.
+        if (defined('FOOTER_LOGO_PATH') && FOOTER_LOGO_PATH === 'none') {
+            $zabbix_logo_b64 = '';
+        } elseif (defined('FOOTER_LOGO_PATH') && FOOTER_LOGO_PATH !== '') {
+            $zabbix_logo_b64 = self::logoDataUri(FOOTER_LOGO_PATH);
+        } else {
+            $zabbix_logo_b64 = self::logoDataUri('assets/Zabbix_logo.png');
         }
 
         // ===================== FIN DE LA CORRECCIÓN DE LOGOS ======================
@@ -70,8 +72,25 @@ class PdfBuilder
         }
     }
 
+    /** Devuelve un data URI base64 (PNG/JPEG según extensión), o '' si el archivo no existe. */
+    private static function logoDataUri(string $relativePath): string
+    {
+        if ($relativePath === '') return '';
+        $abs = __DIR__ . '/../' . $relativePath;
+        if (!is_file($abs)) return '';
+        $ext = strtolower(pathinfo($abs, PATHINFO_EXTENSION));
+        $mime = ($ext === 'jpg' || $ext === 'jpeg') ? 'image/jpeg' : 'image/png';
+        return 'data:' . $mime . ';base64,' . base64_encode(file_get_contents($abs));
+    }
+
     private static function buildHtml(array $imgs, string $customLogoB64, string $zabbixLogoB64): string
     {
+
+        // Sarabun (soporta tailandés) se registra programáticamente en
+        // buildWithDompdf() vía FontMetrics::registerFont — dompdf 1.x no
+        // procesa @font-face con data URI. Esta ranura queda para el CSS.
+        $sarabun = '';
+
         $blocks = [];
         $toc = [];
         $n = 1;
@@ -120,8 +139,9 @@ class PdfBuilder
             <meta charset="utf-8">
             <title>' . t('pdf_main_title') . '</title>
             <style>
+                ' . $sarabun . '
                 @page { margin: 80px 50px 60px 50px; }
-                body { font-family: Arial, sans-serif; font-size: 12px; color: #333; line-height: 1.5; margin: 0; padding: 0; }
+                body { font-family: "Sarabun", Arial, sans-serif; font-size: 12px; color: #333; line-height: 1.5; margin: 0; padding: 0; }
                 .header { position: fixed; top: -60px; left: 0; right: 0; height: 60px; padding: 10px 50px; display: flex; align-items: center; border-bottom: 1px solid #ddd; background: white; }
                 .header img { height: 40px; }
                 .footer { position: fixed; bottom: -40px; left: 0; right: 0; height: 30px; text-align: center; font-size: 10px; color: #666; border-top: 1px solid #ddd; display: flex; justify-content: center; align-items: center; gap: 10px; background: white; padding: 5px 0; }
@@ -141,7 +161,11 @@ class PdfBuilder
                 .toc-link:hover { color: #1a5276; text-decoration: underline; }
                 .toc-page { color: #2c3e50; font-size: 0.9em; text-align: right; }
                 .toc-page:after { content: target-counter(attr(data-target), page); }
-                .chart-title { color: #1a5276; border-bottom: 1px solid #eee; padding-bottom: 5px; margin-bottom: 15px; }
+                .chart-title { color: #1a5276; border-bottom: 1px solid #eee; padding-bottom: 5px; margin-bottom: 15px; line-height: 1.7; }
+                /* Espacio extra arriba: los signos vocálicos y tonos del tailandés
+                   sobresalen por encima del line box y quedarían tapados por la cabecera. */
+                .content { padding-top: 12px; }
+                h1 { margin: 10px 0 15px; line-height: 1.7; }
                 .chart-container { width: 100%; text-align: center; }
                 .chart-image { max-width: 100%; height: auto; margin: 0 auto; display: block; }
             </style>
@@ -162,7 +186,7 @@ class PdfBuilder
             <script type="text/php">
                 if (isset($pdf)) {
                     $text = "' . t('pdf_page_x_of_y') . '";
-                    $font = $fontMetrics->get_font("Arial, sans-serif", "normal");
+                    $font = $fontMetrics->get_font("Sarabun, Arial, sans-serif", "normal");
                     $size = 8;
                     $y = $pdf->get_height() - 20;
                     $x = $pdf->get_width() - 50 - $fontMetrics->get_text_width($text, $font, $size);
@@ -186,7 +210,29 @@ class PdfBuilder
         $options = new Dompdf\Options();
         $options->set('isRemoteEnabled', true);
         $options->set('isPhpEnabled', true);
+        // dompdf solo deja cargar archivos locales dentro de su chroot
+        // (por defecto, su propia carpeta). Se amplía al raíz de la app
+        // para poder registrar las fuentes de assets/fonts.
+        $options->set('chroot', array_values(array_filter([
+            realpath(__DIR__ . '/..'),
+            realpath(__DIR__ . '/../vendor/dompdf/dompdf'),
+        ])));
+
         $dompdf = new Dompdf\Dompdf($options);
+
+        // Registra Sarabun (normal/bold) para que el HTML pueda usar
+        // font-family: Sarabun y renderizar texto en tailandés.
+        $fontMetrics = $dompdf->getFontMetrics();
+        foreach (['Regular' => 'normal', 'Bold' => 'bold'] as $variant => $weight) {
+            $fontFile = realpath(__DIR__ . '/../assets/fonts/Sarabun-' . $variant . '.ttf');
+            if ($fontFile !== false && is_file($fontFile)) {
+                $fontMetrics->registerFont(
+                    ['family' => 'Sarabun', 'weight' => $weight, 'style' => 'normal'],
+                    $fontFile
+                );
+            }
+        }
+
         $dompdf->loadHtml($html);
         $dompdf->setPaper('A4', 'portrait');
         $dompdf->render();

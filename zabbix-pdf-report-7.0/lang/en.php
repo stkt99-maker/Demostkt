@@ -30,8 +30,19 @@ return [
     'export_from_label' => 'From:',
     'export_to_label' => 'To:',
     'export_last_24h' => 'Last 24 hours',
+    'export_last_1d' => 'Last 1 day',
+    'export_last_1w' => 'Last 1 week',
+    'export_last_1m' => 'Last 1 month',
+    'export_last_1y' => 'Last 1 year',
     'export_time_range_note' => 'If you fill From/To, absolute range will be used. Otherwise, the relative option is used.',
     'export_generate_pdf_button' => 'Generate PDF',
+    'export_logout' => 'Log out',
+    'export_templates_only_label' => 'Templates',
+    'export_items_label' => 'Items to include in the report (tick to select/remove)',
+    'items_search_placeholder' => 'Search items...',
+    'items_select_all' => 'Select all',
+    'items_clear_all' => 'Clear all',
+    'items_panel_empty' => 'No items yet — select Hosts first, or pick from templates above',
 
     // Modals (JavaScript)
     'modal_select_button' => 'Select',
@@ -69,7 +80,7 @@ return [
     // ... (existing translations)
     
     // PdfBuilder.php
-    'pdf_main_title' => 'Zabbix Graphs Report',
+    'pdf_main_title' => 'บริษัท นิวเทคโนโลยี่อินฟอร์เมชั่น จำกัด',
     'pdf_toc_title' => 'Table of Contents',
     'pdf_generated_on' => 'Generated on',
     'pdf_page_x_of_y' => 'Page {PAGE_NUM} of {PAGE_COUNT}',
