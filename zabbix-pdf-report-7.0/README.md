@@ -20,6 +20,7 @@
 Created by **Axel Del Canto** WITH IA.
 
 > 📖 **คู่มือติดตั้งภาษาไทย:** [INSTALL.md](INSTALL.md) — รองรับ Zabbix 6.4–7.4+ (ทดสอบแล้วบน 7.4.15)
+> 📖 **คู่มือการใช้งานภาษาไทย:** [USAGE.md](USAGE.md) — วิธีใช้ทุกฟีเจอร์ รวมหน้าสรุปและวิเคราะห์ข้อมูลท้ายรายงาน
 
 A simple and powerful web tool to select Zabbix items and export their historical graphs into a PDF report.
 
