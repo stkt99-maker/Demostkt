@@ -85,6 +85,26 @@ return [
     'pdf_generated_on' => 'Generado el',
     'pdf_page_x_of_y' => 'Página {PAGE_NUM} de {PAGE_COUNT}',
 
+    // Sección de análisis final
+    'pdf_analysis_title' => 'Resumen y análisis de datos',
+    'pdf_analysis_overview' => 'Este informe cubre {HOSTS} hosts, {ITEMS} items, desde {FROM} hasta {TO}',
+    'pdf_analysis_obs_title' => 'Observaciones',
+    'pdf_col_item' => 'Item',
+    'pdf_col_host' => 'Host',
+    'pdf_col_min' => 'Mín',
+    'pdf_col_avg' => 'Prom',
+    'pdf_col_max' => 'Máx',
+    'pdf_col_last' => 'Último',
+    'pdf_col_trend' => 'Tendencia',
+    'pdf_trend_up' => 'Aumentando',
+    'pdf_trend_down' => 'Disminuyendo',
+    'pdf_trend_stable' => 'Estable',
+    'pdf_obs_cpu_high' => 'CPU: {NAME} promedió {AVG}% (pico {MAX}%) — por encima del umbral del 80%',
+    'pdf_obs_mem_high' => 'Memoria: {NAME} promedió {AVG}% (pico {MAX}%) — por encima del umbral del 85%',
+    'pdf_obs_disk_high' => 'Disco: {NAME} promedió {AVG}% (pico {MAX}%) — por encima del umbral del 90%',
+    'pdf_obs_top3' => 'Items con los promedios más altos: {LIST}',
+    'pdf_obs_all_normal' => 'Ningún valor superó los umbrales configurados — el sistema se comportó con normalidad durante el período',
+
     // ... (traducciones existentes)
 
     // Créditos de autor

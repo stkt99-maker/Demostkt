@@ -360,6 +360,7 @@ if (!is_file($cookieJar) || filesize($cookieJar) < 10) {
 }
 
 $entries = [];
+$itemDefs = [];
 
 if (!empty($input_item_ids)) {
     // ... (Esta secci�n para items por ID directo se mantiene igual)
@@ -371,9 +372,10 @@ if (!empty($input_item_keys) && !empty($hostids)) {
 
         // Un fallo puntual de la API en un host no debe abortar todo el informe.
         try {
-            // Busqueda exacta por 'filter' con 'key_'.
+            // Busqueda exacta por 'filter' con 'key_'. units/value_type/lastvalue
+            // se piden para la sección de análisis al final del informe.
             $itemsFound = $api->call('item.get', [
-                'output'      => ['itemid', 'name', 'key_'],
+                'output'      => ['itemid', 'name', 'key_', 'units', 'value_type', 'lastvalue'],
                 'hostids'     => $hid,
                 'filter'      => ['key_' => $input_item_keys],
                 'sortfield'   => 'name'
@@ -392,11 +394,152 @@ if (!empty($input_item_keys) && !empty($hostids)) {
             if (!isset($item['itemid'])) continue;
             $itemid = (string)$item['itemid'];
             $title  = (string)($item['name'] ?? $item['key_'] ?? 'item:' . $itemid);
+            $itemDefs[] = [
+                'itemid'     => $itemid,
+                'host'       => $hostName,
+                'name'       => $title,
+                'units'      => (string)($item['units'] ?? ''),
+                'value_type' => (int)($item['value_type'] ?? 0),
+                'lastvalue'  => (string)($item['lastvalue'] ?? ''),
+            ];
             $e = buildItemChartEntry($hostName, $itemid, $title, $from_text, $to_text, $cookieJar);
             if ($e) $entries[] = $e;
         }
     }
 }
+
+// ==================== สรุปและวิเคราะห์ข้อมูลท้ายรายงาน ====================
+// รวมแถวข้อมูลเป็นสถิติ: ต่ำสุด/สูงสุด/เฉลี่ย (ถ่วงน้ำหนักด้วย num) และ
+// แนวโน้มจากครึ่งแรก vs ครึ่งหลังของช่วงเวลา (เปลี่ยน >5% ถือว่ามีแนวโน้ม)
+function zbx_aggregate(array $rows, int $from_ts, int $to_ts): ?array {
+    $min = INF; $max = -INF; $wsum = 0.0; $wnum = 0;
+    $sumA = 0.0; $nA = 0; $sumB = 0.0; $nB = 0;
+    $mid = (int)(($from_ts + $to_ts) / 2);
+    foreach ($rows as $r) {
+        $va = (float)$r['v'];
+        $vm = isset($r['min']) ? (float)$r['min'] : $va;
+        $vx = isset($r['max']) ? (float)$r['max'] : $va;
+        $num = max(1, (int)($r['num'] ?? 1));
+        if ($vm < $min) $min = $vm;
+        if ($vx > $max) $max = $vx;
+        $wsum += $va * $num; $wnum += $num;
+        $clk = (int)($r['clk'] ?? 0);
+        if ($clk && $clk < $mid) { $sumA += $va * $num; $nA += $num; }
+        elseif ($clk) { $sumB += $va * $num; $nB += $num; }
+    }
+    if ($wnum < 1) return null;
+
+    $dir = '';
+    if ($nA > 0 && $nB > 0) {
+        $a = $sumA / $nA; $b = $sumB / $nB;
+        if ($a != 0.0) {
+            $chg = ($b - $a) / abs($a);
+            $dir = ($chg > 0.05) ? 'up' : (($chg < -0.05) ? 'down' : 'stable');
+        } else {
+            $dir = ($b > $a) ? 'up' : (($b < $a) ? 'down' : 'stable');
+        }
+    }
+    return ['min' => $min, 'max' => $max, 'avg' => $wsum / $wnum, 'dir' => $dir];
+}
+
+// ดึงค่าสถิติของ item ที่เป็นตัวเลข (value_type 0=float, 3=uint):
+// ใช้ trend.get ก่อน ถ้าไม่มี trend (item ที่ปิดเก็บ trend เช่น system.uptime
+// ซึ่งเทมเพลตตั้ง keep_trends=0) ให้ fallback ไป history.get
+function collectItemStats($api, array $itemDefs, int $from_ts, int $to_ts): array {
+    $rows = [];
+    foreach ($itemDefs as $d) {
+        if (!in_array($d['value_type'], [0, 3], true)) continue;
+        $agg = null;
+        try {
+            $trend = (array)$api->call('trend.get', [
+                'output'    => ['value_min', 'value_avg', 'value_max', 'num', 'clock'],
+                'itemids'   => [$d['itemid']],
+                'time_from' => $from_ts,
+                'time_till' => $to_ts,
+            ]);
+            if (!empty($trend) && is_array($trend)) {
+                $norm = [];
+                foreach ($trend as $r) {
+                    if (!isset($r['value_avg'])) continue;
+                    $norm[] = ['v' => $r['value_avg'], 'min' => $r['value_min'] ?? null,
+                               'max' => $r['value_max'] ?? null, 'num' => $r['num'] ?? 1,
+                               'clk' => $r['clock'] ?? 0];
+                }
+                $agg = zbx_aggregate($norm, $from_ts, $to_ts);
+            }
+            if ($agg === null) {
+                $hist = (array)$api->call('history.get', [
+                    'output'    => ['value', 'clock'],
+                    'itemids'   => [$d['itemid']],
+                    'history'   => $d['value_type'],
+                    'time_from' => $from_ts,
+                    'time_till' => $to_ts,
+                    'limit'     => 20000,
+                    'sortfield' => 'clock',
+                    'sortorder' => 'ASC',
+                ]);
+                if (!empty($hist) && is_array($hist)) {
+                    $norm = [];
+                    foreach ($hist as $r) $norm[] = ['v' => $r['value'], 'clk' => $r['clock'] ?? 0];
+                    $agg = zbx_aggregate($norm, $from_ts, $to_ts);
+                }
+            }
+        } catch (Throwable $e) {
+            continue;
+        }
+        if ($agg === null) continue;
+
+        $rows[] = [
+            'host'  => $d['host'],
+            'name'  => $d['name'],
+            'units' => $d['units'],
+            'min'   => $agg['min'],
+            'avg'   => $agg['avg'],
+            'max'   => $agg['max'],
+            'last'  => is_numeric($d['lastvalue']) ? (float)$d['lastvalue'] : null,
+            'dir'   => $agg['dir'],
+        ];
+    }
+    usort($rows, function ($a, $b) {
+        return strcmp($a['host'], $b['host']) ?: strcmp($a['name'], $b['name']);
+    });
+    return $rows;
+}
+
+// ข้อสังเกตอัตโนมัติ: แจ้งเตือนเมื่อค่าเฉลี่ยข้ามเกณฑ์ของกลุ่มที่รู้จัก
+// (CPU ≥ 80%, หน่วยความจำ ≥ 85%, พื้นที่ดิสก์ ≥ 90%)
+function buildObservations(array $rows): array {
+    $obs = [];
+    foreach ($rows as $r) {
+        if ($r['units'] !== '%') continue;
+        $label = $r['host'] . ' - ' . $r['name'];
+        $avgTxt = number_format($r['avg'], 1);
+        $maxTxt = number_format($r['max'], 1);
+        $n = strtolower($r['name']);
+        if (preg_match('/cpu/i', $n) && $r['avg'] >= 80) {
+            $obs[] = strtr(t('pdf_obs_cpu_high'), ['{NAME}' => $label, '{AVG}' => $avgTxt, '{MAX}' => $maxTxt]);
+        } elseif (preg_match('/mem(o|ó)ry|\bram\b/i', $n) && $r['avg'] >= 85) {
+            $obs[] = strtr(t('pdf_obs_mem_high'), ['{NAME}' => $label, '{AVG}' => $avgTxt, '{MAX}' => $maxTxt]);
+        } elseif (preg_match('/space|disk/i', $n) && $r['avg'] >= 90) {
+            $obs[] = strtr(t('pdf_obs_disk_high'), ['{NAME}' => $label, '{AVG}' => $avgTxt, '{MAX}' => $maxTxt]);
+        }
+    }
+    if (empty($obs)) {
+        $obs[] = t('pdf_obs_all_normal');
+    } else {
+        // 3 อันดับค่าเฉลี่ยสูงสุด (รวมของทุกหน่วย) เป็นบริบทเพิ่มให้ผู้อ่าน
+        $top = $rows;
+        usort($top, function ($a, $b) { return $b['avg'] <=> $a['avg']; });
+        $top = array_slice($top, 0, 3);
+        $list = [];
+        foreach ($top as $r) {
+            $list[] = $r['name'] . ' (' . PdfBuilder::fmtValue($r['avg'], $r['units']) . ')';
+        }
+        array_unshift($obs, strtr(t('pdf_obs_top3'), ['{LIST}' => implode(', ', $list)]));
+    }
+    return $obs;
+}
+// ===================== FIN ANÁLISIS ======================
 
 if (empty($entries)) {
     http_response_code(400);
@@ -408,7 +551,22 @@ if (empty($entries)) {
 
 $outfile = TMP_DIR . '/zabbix_report_' . date('Ymd_His') . '.pdf';
 try {
-    PdfBuilder::build($entries, $outfile);
+    // สรุปและวิเคราะห์ท้ายรายงาน: ดึงสถิติจาก trend.get ต่อ item
+    $analysisRows = collectItemStats($api, $itemDefs, $from_ts, $to_ts);
+    $hostsWithData = [];
+    foreach ($analysisRows as $r) $hostsWithData[$r['host']] = true;
+    $analysis = [];
+    if (!empty($analysisRows)) {
+        $analysis = [
+            'from'  => $from_text,
+            'to'    => $to_text,
+            'hosts' => count($hostsWithData),
+            'items' => count($analysisRows),
+            'rows'  => $analysisRows,
+            'obs'   => buildObservations($analysisRows),
+        ];
+    }
+    PdfBuilder::build($entries, $outfile, 'dompdf', $analysis);
     header('Content-Type: application/pdf');
     header('Content-Disposition: attachment; filename="' . basename($outfile) . '"');
     header('Cache-Control: no-store, no-cache, must-revalidate, max-age=0');

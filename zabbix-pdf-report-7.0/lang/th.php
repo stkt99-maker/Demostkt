@@ -83,6 +83,26 @@ return [
     'pdf_generated_on' => 'สร้างเมื่อ',
     'pdf_page_x_of_y' => 'หน้า {PAGE_NUM} จาก {PAGE_COUNT}',
 
+    // สรุปและวิเคราะห์ข้อมูลท้ายรายงาน
+    'pdf_analysis_title' => 'สรุปและวิเคราะห์ข้อมูล',
+    'pdf_analysis_overview' => 'รายงานนี้ครอบคลุม {HOSTS} โฮสต์ จำนวน {ITEMS} รายการ ช่วงเวลา {FROM} ถึง {TO}',
+    'pdf_analysis_obs_title' => 'ข้อสังเกต',
+    'pdf_col_item' => 'รายการ',
+    'pdf_col_host' => 'โฮสต์',
+    'pdf_col_min' => 'ต่ำสุด',
+    'pdf_col_avg' => 'เฉลี่ย',
+    'pdf_col_max' => 'สูงสุด',
+    'pdf_col_last' => 'ล่าสุด',
+    'pdf_col_trend' => 'แนวโน้ม',
+    'pdf_trend_up' => 'เพิ่มขึ้น',
+    'pdf_trend_down' => 'ลดลง',
+    'pdf_trend_stable' => 'คงที่',
+    'pdf_obs_cpu_high' => 'CPU: {NAME} เฉลี่ย {AVG}% (สูงสุด {MAX}%) — โหลดสูงกว่าเกณฑ์ 80%',
+    'pdf_obs_mem_high' => 'หน่วยความจำ: {NAME} เฉลี่ย {AVG}% (สูงสุด {MAX}%) — ใช้งานสูงกว่าเกณฑ์ 85%',
+    'pdf_obs_disk_high' => 'พื้นที่ดิสก์: {NAME} เฉลี่ย {AVG}% (สูงสุด {MAX}%) — ใช้งานเกินเกณฑ์ 90%',
+    'pdf_obs_top3' => 'รายการที่มีค่าเฉลี่ยสูงสุด 3 อันดับแรก: {LIST}',
+    'pdf_obs_all_normal' => 'ไม่พบค่าที่เกินเกณฑ์ที่กำหนด — ระบบทำงานปกติในช่วงเวลาที่รายงาน',
+
     // Author credits
     'common_author_credit' => 'พัฒนาโดย Axel Del Canto',
     'pdf_author_credit' => 'PDF พัฒนาโดย Axel Del Canto',

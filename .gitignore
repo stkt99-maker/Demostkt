@@ -12,6 +12,12 @@ logs/
 *.log
 zabbix-pdf-report-7.0/report_test.pdf
 
+# dompdf font cache — สร้างเองตอน render จริง (เติมหลัง Sarabun ถูก register)
+zabbix-pdf-report-7.0/vendor/dompdf/dompdf/lib/fonts/sarabun_*
+zabbix-pdf-report-7.0/vendor/dompdf/dompdf/lib/fonts/*.afm.php
+zabbix-pdf-report-7.0/vendor/dompdf/dompdf/lib/fonts/*.ufm.php
+zabbix-pdf-report-7.0/vendor/dompdf/dompdf/lib/fonts/dompdf_font_family_cache.php
+
 # ===== Archives kept locally only =====
 *.tar.gz
 

@@ -10,9 +10,11 @@ class PdfBuilder
      * @param array $entries Arreglo de gráficos, cada uno con ['title' => '...', 'png' => '/ruta/absoluta/al/grafico.png']
      * @param string $outfile Ruta absoluta donde se guardará el PDF.
      * @param string $engine 'dompdf' o 'wkhtmltopdf'.
+     * @param array $analysis Datos para la sección de análisis final
+     *        (generada por generate.php): ['rows'=>[host,name,units,min,avg,max,last,dir], 'obs'=>[...], 'from','to','hosts','items'].
      * @throws RuntimeException Si ocurren errores críticos durante la generación.
      */
-    public static function build(array $entries, string $outfile, $engine = 'dompdf'): void
+    public static function build(array $entries, string $outfile, $engine = 'dompdf', array $analysis = []): void
     {
         if (empty($entries)) {
             throw new RuntimeException('No hay graficos para generar el PDF.');
@@ -57,7 +59,7 @@ class PdfBuilder
         // ===================== FIN DE LA CORRECCIÓN DE LOGOS ======================
 
         // 4. Construye el HTML
-        $html = self::buildHtml($imgs, $custom_logo_b64, $zabbix_logo_b64);
+        $html = self::buildHtml($imgs, $custom_logo_b64, $zabbix_logo_b64, $analysis);
 
         // 5. Genera el PDF con el motor seleccionado
         $eng = $engine ?: 'dompdf';
@@ -72,6 +74,41 @@ class PdfBuilder
         }
     }
 
+    /** จัดรูปค่าตัวเลขตามหน่วยของ item (%, B, bps, s, unixtime, uptime)
+     *  สำหรับตารางวิเคราะห์ท้ายรายงาน — ใช้เฉพาะอักขระที่ฟอนต์ Sarabun มี */
+    public static function fmtValue($v, string $units = ''): string
+    {
+        if ($v === null || !is_numeric($v)) return '-';
+        $v = (float)$v;
+        $sign = ($v < 0) ? '-' : '';
+        $x = abs($v);
+        switch ($units) {
+            case '%':
+                return $sign . number_format($x, 1, '.', '') . '%';
+            case 'B': case 'Bps':
+                $u = ['B', 'KB', 'MB', 'GB', 'TB']; $i = 0;
+                while ($x >= 1024 && $i < 4) { $x /= 1024; $i++; }
+                return $sign . number_format($x, 1, '.', '') . ' ' . $u[$i] . ($units === 'Bps' ? '/s' : '');
+            case 'bps':
+                $u = ['bps', 'Kbps', 'Mbps', 'Gbps']; $i = 0;
+                while ($x >= 1000 && $i < 3) { $x /= 1000; $i++; }
+                return $sign . number_format($x, 1, '.', '') . ' ' . $u[$i];
+            case 's':
+                if ($x >= 86400) return $sign . number_format($x / 86400, 1, '.', '') . ' d';
+                if ($x >= 3600)  return $sign . number_format($x / 3600, 1, '.', '') . ' h';
+                if ($x >= 60)    return $sign . number_format($x / 60, 1, '.', '') . ' min';
+                return $sign . number_format($x, 2, '.', '') . ' s';
+            case 'unixtime':
+                return date('Y-m-d H:i', (int)$v);
+            case 'uptime':
+                $d = floor($x / 86400); $h = floor(($x - $d * 86400) / 3600);
+                return $sign . $d . 'd ' . $h . 'h';
+            default:
+                $dec = ($x >= 1000) ? 0 : 2;
+                return $sign . number_format($x, $dec, '.', '') . ($units !== '' ? ' ' . $units : '');
+        }
+    }
+
     /** Devuelve un data URI base64 (PNG/JPEG según extensión), o '' si el archivo no existe. */
     private static function logoDataUri(string $relativePath): string
     {
@@ -83,7 +120,7 @@ class PdfBuilder
         return 'data:' . $mime . ';base64,' . base64_encode(file_get_contents($abs));
     }
 
-    private static function buildHtml(array $imgs, string $customLogoB64, string $zabbixLogoB64): string
+    private static function buildHtml(array $imgs, string $customLogoB64, string $zabbixLogoB64, array $analysis = []): string
     {
 
         // Sarabun (soporta tailandés) se registra programáticamente en
@@ -110,6 +147,52 @@ class PdfBuilder
             ];
         }
 
+        // --- สรุปและวิเคราะห์ข้อมูลท้ายรายงาน (เริ่มหน้าใหม่) ---
+        // คำนวณก่อนสารบัญ เพื่อให้แถว "สรุปและวิเคราะห์ข้อมูล" เข้า TOC ได้
+        $analysisHtml = '';
+        if (!empty($analysis) && !empty($analysis['rows'])) {
+            $tbl = '';
+            foreach ((array)$analysis['rows'] as $r) {
+                $dirKey = ($r['dir'] ?? '') === 'up' ? 'pdf_trend_up'
+                        : (($r['dir'] ?? '') === 'down' ? 'pdf_trend_down' : 'pdf_trend_stable');
+                $tbl .= '<tr>'
+                    .'<td class="a-item">'.htmlspecialchars((string)$r['name'], ENT_QUOTES, 'UTF-8').'</td>'
+                    .'<td class="a-host">'.htmlspecialchars((string)$r['host'], ENT_QUOTES, 'UTF-8').'</td>'
+                    .'<td class="a-num">'.self::fmtValue($r['min'], (string)($r['units'] ?? '')).'</td>'
+                    .'<td class="a-num">'.self::fmtValue($r['avg'], (string)($r['units'] ?? '')).'</td>'
+                    .'<td class="a-num">'.self::fmtValue($r['max'], (string)($r['units'] ?? '')).'</td>'
+                    .'<td class="a-num">'.(isset($r['last']) && $r['last'] !== null ? self::fmtValue($r['last'], (string)($r['units'] ?? '')) : '-').'</td>'
+                    .'<td class="a-trend">'.t($dirKey).'</td>'
+                    .'</tr>';
+            }
+            $obsHtml = '';
+            foreach ((array)($analysis['obs'] ?? []) as $o) {
+                $obsHtml .= '<li>'.htmlspecialchars((string)$o, ENT_QUOTES, 'UTF-8').'</li>';
+            }
+            $overview = strtr(t('pdf_analysis_overview'), [
+                '{HOSTS}' => (string)($analysis['hosts'] ?? 0),
+                '{ITEMS}' => (string)($analysis['items'] ?? 0),
+                '{FROM}'  => (string)($analysis['from'] ?? ''),
+                '{TO}'    => (string)($analysis['to'] ?? ''),
+            ]);
+            $analysisHtml = '<div class="analysis-block">'
+                .'<h2 id="analysis" class="analysis-title">'.htmlspecialchars(t('pdf_analysis_title'), ENT_QUOTES, 'UTF-8').'</h2>'
+                .'<p class="analysis-overview">'.htmlspecialchars($overview, ENT_QUOTES, 'UTF-8').'</p>'
+                .'<table class="analysis-table"><thead><tr>'
+                .'<th class="a-item">'.t('pdf_col_item').'</th>'
+                .'<th class="a-host">'.t('pdf_col_host').'</th>'
+                .'<th>'.t('pdf_col_min').'</th>'
+                .'<th>'.t('pdf_col_avg').'</th>'
+                .'<th>'.t('pdf_col_max').'</th>'
+                .'<th>'.t('pdf_col_last').'</th>'
+                .'<th>'.t('pdf_col_trend').'</th>'
+                .'</tr></thead><tbody>'.$tbl.'</tbody></table>'
+                .(!empty($obsHtml)
+                    ? '<h3 class="analysis-sub">'.t('pdf_analysis_obs_title').'</h3><ul class="analysis-obs">'.$obsHtml.'</ul>'
+                    : '')
+                .'</div>';
+        }
+
         $tocHtml = '<div class="toc-container">'.
                   '<h2 class="toc-title">' . t('pdf_toc_title') . '</h2>'.
                   '<table class="toc-table"><tbody>';
@@ -122,13 +205,21 @@ class PdfBuilder
                        .'<td class="toc-page-cell"><span class="toc-page" data-target="'.$target.'"></span></td>'
                        .'</tr>';
         }
+        // หน้าสรุป/วิเคราะห์ท้ายรายงานก็ขึ้นในสารบัญ (กรณีมีข้อมูลสถิติ)
+        if ($analysisHtml !== '') {
+            $tocHtml .= '<tr class="toc-row">'
+                       .'<td class="toc-title-cell"><a href="#analysis" class="toc-link">'.htmlspecialchars(t('pdf_analysis_title'), ENT_QUOTES, 'UTF-8').'</a></td>'
+                       .'<td class="toc-dots-cell"><span class="dots"></span></td>'
+                       .'<td class="toc-page-cell"><span class="toc-page" data-target="#analysis"></span></td>'
+                       .'</tr>';
+        }
         $tocHtml .= '</tbody></table></div>';
 
         $content = '';
         foreach ($blocks as $block) {
             $content .= $block['content'];
         }
-        
+
         // --- CÓDIGO HTML MODIFICADO PARA LOGOS OPCIONALES ---
         $customLogoHtml = $customLogoB64 ? '<img src="'.$customLogoB64.'" alt="Logo">' : '';
         $zabbixLogoHtml = $zabbixLogoB64 ? '<img src="'.$zabbixLogoB64.'" alt="Zabbix Logo">' : '';
@@ -168,6 +259,17 @@ class PdfBuilder
                 h1 { margin: 10px 0 15px; line-height: 1.7; }
                 .chart-container { width: 100%; text-align: center; }
                 .chart-image { max-width: 100%; height: auto; margin: 0 auto; display: block; }
+                /* สรุปและวิเคราะห์ท้ายรายงาน */
+                .analysis-block { page-break-before: always; margin-top: 10px; }
+                .analysis-title { color: #1a5276; border-bottom: 2px solid #1a5276; padding-bottom: 5px; margin-bottom: 15px; line-height: 1.7; }
+                .analysis-overview { font-size: 11px; color: #555; margin: 0 0 10px; }
+                .analysis-table { width: 100%; border-collapse: collapse; font-size: 9px; }
+                .analysis-table th, .analysis-table td { border: 1px solid #ccc; padding: 3px 5px; text-align: right; }
+                .analysis-table th { background: #eef3f7; color: #1a5276; }
+                .analysis-table td.a-item, .analysis-table th.a-item { text-align: left; word-break: break-word; }
+                .analysis-table td.a-host, .analysis-table th.a-host { text-align: left; }
+                .analysis-sub { color: #1a5276; margin: 15px 0 5px; line-height: 1.7; }
+                .analysis-obs { font-size: 11px; margin: 0; padding-left: 18px; }
             </style>
         </head>
         <body>
@@ -176,6 +278,7 @@ class PdfBuilder
                 <h1>' . t('pdf_main_title') . '</h1>
                 '.$tocHtml.'
                 '.$content.'
+                '.$analysisHtml.'
             </div>
             <div class="footer">
                 <span>' . t('pdf_generated_on') . ' '.date('d/m/Y H:i:s').'</span>

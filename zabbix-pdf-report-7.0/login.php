@@ -23,14 +23,26 @@ function ztrace_login($m){ @file_put_contents(APP_TMP.'/zbx_login_trace.log','['
 // Zabbix 7.2+: NO enviar la propiedad 'auth' en el cuerpo (fue eliminada; causa error -32600).
 function api_validate_login(string $user, string $pass, ?string &$err=null): bool {
   $payload = json_encode(['jsonrpc'=>'2.0','method'=>'user.login','params'=>['username'=>$user,'password'=>$pass],'id'=>1]);
-  $ch = curl_init(ZABBIX_API_URL);
-  curl_setopt_array($ch,[CURLOPT_RETURNTRANSFER=>true,CURLOPT_HTTPHEADER=>['Content-Type: application/json-rpc'],CURLOPT_POST=>true,CURLOPT_POSTFIELDS=>$payload,CURLOPT_TIMEOUT=>30]);
-  if (stripos(ZABBIX_API_URL,'https://')===0 && defined('VERIFY_SSL') && !VERIFY_SSL){ curl_setopt($ch,CURLOPT_SSL_VERIFYPEER,0); curl_setopt($ch,CURLOPT_SSL_VERIFYHOST,0); }
-  $resp=curl_exec($ch); $hc=(int)curl_getinfo($ch,CURLINFO_HTTP_CODE); $er=curl_error($ch);
-  if ($er || $hc!==200 || !$resp){ $err=$er?:('HTTP '.$hc); return false; }
-  $j=json_decode($resp,true);
-  if (isset($j['result']) && is_string($j['result']) && $j['result']!=='') return true;
-  $err = 'Credenciales invalidas';
+  for ($attempt = 1; $attempt <= 2; $attempt++) {
+    $ch = curl_init(ZABBIX_API_URL);
+    curl_setopt_array($ch,[CURLOPT_RETURNTRANSFER=>true,CURLOPT_HTTPHEADER=>['Content-Type: application/json-rpc'],CURLOPT_POST=>true,CURLOPT_POSTFIELDS=>$payload,CURLOPT_TIMEOUT=>30]);
+    if (stripos(ZABBIX_API_URL,'https://')===0 && defined('VERIFY_SSL') && !VERIFY_SSL){ curl_setopt($ch,CURLOPT_SSL_VERIFYPEER,0); curl_setopt($ch,CURLOPT_SSL_VERIFYHOST,0); }
+    $resp=curl_exec($ch); $hc=(int)curl_getinfo($ch,CURLINFO_HTTP_CODE); $er=curl_error($ch);
+    if ($er || $hc!==200 || !$resp){
+      $err=$er?:('HTTP '.$hc);
+      ztrace_login("api_validate attempt $attempt FAIL: $err resp=".substr((string)$resp,0,200));
+      if ($attempt === 1) { usleep(500000); continue; } // error ชั่วคราว → ลองอีกครั้ง
+      return false;
+    }
+    $j=json_decode($resp,true);
+    if (isset($j['result']) && is_string($j['result']) && $j['result']!==''){
+      if ($attempt === 2) ztrace_login("api_validate OK on retry (attempt 1 failed: $err)");
+      return true;
+    }
+    $err = 'Credenciales invalidas';
+    ztrace_login("api_validate attempt $attempt bad-json: ".substr((string)$resp,0,300));
+    return false;
+  }
   return false;
 }
 
@@ -55,11 +67,11 @@ function web_login(string $user, string $pass, string $cookieJar, ?string &$err=
 
   // require zbx_session cookie
   $cj=@file_get_contents($cookieJar);
-  if (!$cj || !preg_match('/\\tzbx_session\\b/',$cj)){ $err='Front no creo sesion'; return false; }
+  if (!$cj || !preg_match('/\\tzbx_session\\b/',$cj)){ $err='Front no creo sesion'; ztrace_login("web_login FAIL: $err"); return false; }
 
   // check dashboard access
   $ch=curl_init($base.'/zabbix.php?action=dashboard.view'); curl_setopt_array($ch,$opt); $dash=curl_exec($ch); $eff=curl_getinfo($ch,CURLINFO_EFFECTIVE_URL); $hc3=(int)curl_getinfo($ch,CURLINFO_HTTP_CODE);
-  if ($dash===false || $hc3===401 || stripos((string)$eff,'index.php')!==false){ $err='Sin acceso al dashboard'; return false; }
+  if ($dash===false || $hc3===401 || stripos((string)$eff,'index.php')!==false){ $err='Sin acceso al dashboard'; ztrace_login("web_login FAIL: $err http=$hc3 eff=$eff"); return false; }
 
   return true;
 }

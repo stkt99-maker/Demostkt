@@ -85,6 +85,26 @@ return [
     'pdf_generated_on' => 'Generated on',
     'pdf_page_x_of_y' => 'Page {PAGE_NUM} of {PAGE_COUNT}',
 
+    // Final analysis section
+    'pdf_analysis_title' => 'Summary and Data Analysis',
+    'pdf_analysis_overview' => 'This report covers {HOSTS} hosts, {ITEMS} items, from {FROM} to {TO}',
+    'pdf_analysis_obs_title' => 'Observations',
+    'pdf_col_item' => 'Item',
+    'pdf_col_host' => 'Host',
+    'pdf_col_min' => 'Min',
+    'pdf_col_avg' => 'Avg',
+    'pdf_col_max' => 'Max',
+    'pdf_col_last' => 'Last',
+    'pdf_col_trend' => 'Trend',
+    'pdf_trend_up' => 'Increasing',
+    'pdf_trend_down' => 'Decreasing',
+    'pdf_trend_stable' => 'Stable',
+    'pdf_obs_cpu_high' => 'CPU: {NAME} averaged {AVG}% (peak {MAX}%) — above the 80% threshold',
+    'pdf_obs_mem_high' => 'Memory: {NAME} averaged {AVG}% (peak {MAX}%) — above the 85% threshold',
+    'pdf_obs_disk_high' => 'Disk: {NAME} averaged {AVG}% (peak {MAX}%) — above the 90% threshold',
+    'pdf_obs_top3' => 'Items with the highest averages: {LIST}',
+    'pdf_obs_all_normal' => 'No values exceeded the configured thresholds — the system behaved normally during the reported period',
+
     // ... (existing translations)
     
     // Author Credits
